@@ -1,0 +1,83 @@
+﻿body {
+    padding-top: 0px;
+    padding-bottom: 0px;
+}
+
+/* Wrapping element */
+/* Set some basic padding to keep content from hitting the edges */
+.body-content {
+    padding-left: 100px;
+    padding-right: 200px;
+    font-family:Calibri;
+    
+}
+
+/* Set widths on the form inputs since otherwise they're 100% wide */
+input,
+select,
+textarea {
+    max-width: 580px;
+}
+
+.startuptext {
+    color:#204293;
+    font-size:18px;   
+}
+
+.line-id-field{
+    color:#204293;
+    padding:5px;
+    height:40px;
+    width:400px;
+    font-size:20px;
+    font-family:Calibri;
+    border-style:solid;
+    border-color:#204293;
+    border-right-style:hidden;
+}
+
+.submit-button {
+    height:40px;
+    font-size:20px;
+    padding:5px;
+    width:50px;
+    color:white;
+    background-color:#204293;
+    border-style:solid;
+    border-color:#204293;
+    transition-duration:0.4s;
+}
+
+.submit-button:hover{
+    background-color:#355cbb;
+    border-color:#355cbb;
+}
+
+.output-table {
+    color:#204293;
+    border-style:none;
+    border-spacing:unset;
+}
+
+.first-column {
+    width: 300px;
+    padding: 5px;
+    font-size:20px;
+    font-weight:bold;
+    border-right-style:solid;
+}
+
+.second-column {
+    padding-left:10px;
+}
+
+.infoline:nth-child(even) {
+    background-color:#c0c0c0;
+}
+
+.state-info {
+    color:#204293;
+    font-size:20px;
+    font-weight:bold;
+    padding: 5px;
+}
