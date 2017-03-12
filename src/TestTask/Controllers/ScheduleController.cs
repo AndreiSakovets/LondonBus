@@ -44,6 +44,11 @@ namespace TestTask.Controllers
             try
             {
                 JObject routeInfo = JObject.Parse(responseFromServer);
+                string mode = (string)routeInfo.SelectToken("mode");
+                if(mode != "bus")
+                {
+                    return Json("[]");
+                }
                 IList<StopModel> routeStopsList = new List<StopModel>();
                 IList<JToken> results = routeInfo["stopPointSequences"][0]["stopPoint"].ToList();
                 foreach (JToken res in results)
@@ -161,16 +166,18 @@ namespace TestTask.Controllers
             try
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-                HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync();
-                var dataStream = response.GetResponseStream();
-                StreamReader reader = new StreamReader(dataStream);
-                responseFromServer = reader.ReadToEnd();
+                using (HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync())
+                {
+                    var dataStream = response.GetResponseStream();
+                    StreamReader reader = new StreamReader(dataStream);
+                    responseFromServer = reader.ReadToEnd();
+                    return responseFromServer;
+                }
             }
             catch (WebException we)
             {
                 throw;
             }
-            return responseFromServer;
         }
     }
 }
