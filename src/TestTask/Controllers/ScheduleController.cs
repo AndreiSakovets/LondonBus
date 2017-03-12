@@ -25,15 +25,18 @@ namespace TestTask.Controllers
         {
             IList<LineScheduleModel> schedule = new List<LineScheduleModel>();
             string url = sourceURLHead + "/Line/" + id + "/Route/Sequence/inbound" + sourceURLTail;
-            string responseFromServer = "";
+            string responseFromServer;
             int itemId = 1;
+            DateTime timeNow = DateTime.Now;
+            TimeSpan ts = new TimeSpan(24 + timeNow.Hour, timeNow.Minute, 0);
+            TimeSpan daySpan = new TimeSpan(24, 0, 0);
 
             try
             {
                 responseFromServer = await getResponseAsync(url);
             }
-            catch(WebException we) {
-                //schedule.Add(new LineScheduleModel(itemId++,"Error. The line you are looking for does not exist. Try specifying a different one",""));
+            catch(WebException we)
+            {
                 return Json("[]");
             }
 
@@ -55,8 +58,8 @@ namespace TestTask.Controllers
             }
 
             // for each naptanID fetch its commonName and schedule
-            foreach (string item in naptanIds) {
-                
+            foreach (string item in naptanIds)
+            {   
                 url = sourceURLHead + "/StopPoint/" + item + sourceURLTail;
                 responseFromServer = await getResponseAsync(url);
                 JToken commonNameSearch = JObject.Parse(responseFromServer);
@@ -68,13 +71,13 @@ namespace TestTask.Controllers
                 {
                     responseFromServer = await getResponseAsync(url);
                 }
-                catch (WebException we){
-                    responseFromServer = null;  
+                catch (WebException we)
+                {
+                    responseFromServer = null;
                 }
 
                 if (responseFromServer != null)
                 {
-
                     //Here we want to know the time of the last journey for all days [Monday-Friday],[Saturday],[Sunday]
                     JObject lastJourneysSearch = JObject.Parse(responseFromServer);
                     IList<HourMinuteModel> lastJourneyList = new List<HourMinuteModel>();
@@ -84,40 +87,46 @@ namespace TestTask.Controllers
                         HourMinuteModel lj = JsonConvert.DeserializeObject<HourMinuteModel>(res.ToString());
                         lastJourneyList.Add(lj);
                     }
-
                     // As soon as we know the time of the last journey, we have to check which schedule to stick to
-                    // E.g. if Saturday/Sunday just started, we should follow Friday/Saturday schedules.
-                    DateTime timeNow = DateTime.Now;
-                    TimeSpan ts = new TimeSpan(24 + timeNow.Hour, timeNow.Minute, 0);
+                    // E.g. if Saturday/Sunday just started, we should follow Friday/Saturday schedules.                   
                     int actualScheduleIndex = 0;
-                    if ((int)timeNow.DayOfWeek == 7)
+                    if (timeNow.DayOfWeek == DayOfWeek.Sunday)
                     {
                         if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[2].hour) * 60 +
                          Int32.Parse(lastJourneyList[2].minute))
                         {
                             actualScheduleIndex = 1;
                         }
-                        else { actualScheduleIndex = 2; }
+                        else
+                        {
+                            actualScheduleIndex = 2;
+                        }
                     }
 
-                    if ((int)timeNow.DayOfWeek == 6)
+                    if (timeNow.DayOfWeek == DayOfWeek.Saturday)
                     {
                         if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[1].hour) * 60 +
                          Int32.Parse(lastJourneyList[1].minute))
                         {
                             actualScheduleIndex = 0;
                         }
-                        else { actualScheduleIndex = 1; }
+                        else
+                        {
+                            actualScheduleIndex = 1;
+                        }
                     }
 
-                    if ((int)timeNow.DayOfWeek == 1)
+                    if (timeNow.DayOfWeek == DayOfWeek.Monday)
                     {
                         if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[0].hour) * 60 +
                          Int32.Parse(lastJourneyList[0].minute))
                         {
                             actualScheduleIndex = 2;
                         }
-                        else { actualScheduleIndex = 0; }
+                        else
+                        {
+                            actualScheduleIndex = 0;
+                        }
                     }
 
                     // When we know which schedule to use, build the string
@@ -129,27 +138,35 @@ namespace TestTask.Controllers
                         journeysList.Add(jrn);
                     }
                     string scheduleString = "";
+                    List<string> stopTimesList = new List<string>();
                     foreach (HourMinuteModel hm in journeysList)
                     {
                         TimeSpan span = new TimeSpan(Int32.Parse(hm.hour), Int32.Parse(hm.minute), 0);
-                        if (span.Days > 0) span = span - new TimeSpan(24, 0, 0);
+                        if (span.Days > 0) span = span - daySpan;
                         scheduleString += span.ToString().Substring(0, 5) + " | ";
+                        stopTimesList.Add(span.ToString().Substring(0,5));
                     }
 
                     // Create a new LineSchedule object
-                    schedule.Add(new LineScheduleModel(itemId++,commonName, scheduleString));
+                    //schedule.Add(new LineScheduleModel(itemId++,commonName, scheduleString));
+                    schedule.Add(new LineScheduleModel(itemId++, commonName, stopTimesList));
                 }
-                else {
-                    schedule.Add(new LineScheduleModel(itemId++,commonName,"Schedule for the station is not available at the moment"));
+                else
+                {
+                    //schedule.Add(new LineScheduleModel(itemId++,commonName,"Schedule for the station is not available at the moment"));
+                    List<string> noresult = new List<string>();
+                    noresult.Add("Schedule for the station is not available at the moment");
+                    schedule.Add(new LineScheduleModel(itemId++,commonName,noresult));
                 }
             }
 
             return Json(schedule);
         }
 
-        public async Task<String> getResponseAsync(string url) {
+        public async Task<String> getResponseAsync(string url)
+        {
 
-            string responseFromServer = "";
+            string responseFromServer;
             try
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
@@ -160,7 +177,6 @@ namespace TestTask.Controllers
             }
             catch (WebException we)
             {
-                responseFromServer = null;
                 throw;
             }
 

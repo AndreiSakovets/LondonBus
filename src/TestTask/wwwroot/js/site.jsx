@@ -25,9 +25,14 @@ handleValueChange: function(e){
 var OutputBox = React.createClass({
   render: function() {
     var scheduleItems = this.props.data.map(function(e) {
+      var string='';
+      e.scheduleString.forEach(function(item){
+        string+= item + ' | ';
+      });
+      string = string.slice(0,-3);
       return (
-        <OutputItem key={e.id} name={e.stationName}> 
-            {e.scheduleString}          
+        <OutputItem key={e.id} name={e.stationName}>             
+            {string}          
         </OutputItem>
       );
     });
