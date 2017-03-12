@@ -24,13 +24,13 @@ namespace TestTask.Controllers
         public async Task<IActionResult> Index([FromRoute] string id)
         {
             IList<LineScheduleModel> schedule = new List<LineScheduleModel>();
-            string url = sourceURLHead + "/Line/" + id + "/Route/Sequence/inbound" + sourceURLTail;
             string responseFromServer;
             int itemId = 1;
             DateTime timeNow = DateTime.Now;
             TimeSpan ts = new TimeSpan(24 + timeNow.Hour, timeNow.Minute, 0);
             TimeSpan daySpan = new TimeSpan(24, 0, 0);
 
+            string url = sourceURLHead + "/Line/" + id + "/Route/Sequence/inbound" + sourceURLTail;
             try
             {
                 responseFromServer = await getResponseAsync(url);
@@ -40,132 +40,123 @@ namespace TestTask.Controllers
                 return Json("[]");
             }
 
-            // Here we want to have naptanIds list parsed
-            JObject naptanIdsSearch = JObject.Parse(responseFromServer);
-            IList<NaptanIdModel> naptanIdsList = new List<NaptanIdModel>();
-            IList<JToken> results = naptanIdsSearch["orderedLineRoutes"].ToList();
-            foreach (JToken res in results)
+            // Extract naptanId and commonName for each stop of the route
+            try
             {
-                NaptanIdModel nid = JsonConvert.DeserializeObject<NaptanIdModel>(res.ToString());
-                naptanIdsList.Add(nid);
-            }
+                JObject routeInfo = JObject.Parse(responseFromServer);
+                IList<StopModel> routeStopsList = new List<StopModel>();
+                IList<JToken> results = routeInfo["stopPointSequences"][0]["stopPoint"].ToList();
+                foreach (JToken res in results)
+                {
+                    StopModel nid = JsonConvert.DeserializeObject<StopModel>(res.ToString());
+                    routeStopsList.Add(nid);
+                }
 
-            // Make naptanIds array a collection
-            IList<string> naptanIds = new List<string>();
-            for (int i = 0; i < naptanIdsList.First().naptanIds.Length; i++)
+                // Build a schedule for each station
+                foreach (StopModel stop in routeStopsList)
+                {
+                    url = sourceURLHead + "/Line/" + id + "/Timetable/" + stop.id + sourceURLTail;
+                    try
+                    {
+                        responseFromServer = await getResponseAsync(url);
+                    }
+                    catch (WebException we)
+                    {
+                        responseFromServer = null;
+                    }
+
+                    if (responseFromServer != null)
+                    {
+                        //Here we want to know the time of the last journey for all days [Monday-Friday],[Saturday],[Sunday]
+                        JObject lastJourneysSearch = JObject.Parse(responseFromServer);
+                        IList<HourMinuteModel> lastJourneyList = new List<HourMinuteModel>();
+                        results = lastJourneysSearch["timetable"]["routes"][0]["schedules"].Children()["lastJourney"].ToList();
+                        foreach (JToken res in results)
+                        {
+                            HourMinuteModel lj = JsonConvert.DeserializeObject<HourMinuteModel>(res.ToString());
+                            lastJourneyList.Add(lj);
+                        }
+                        // As soon as we know the time of the last journey, we have to check which schedule to stick to
+                        // E.g. if Saturday/Sunday just started, we should follow Friday/Saturday schedules.                   
+                        int actualScheduleIndex = 0;
+                        if (timeNow.DayOfWeek == DayOfWeek.Sunday)
+                        {
+                            if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[2].hour) * 60 +
+                             Int32.Parse(lastJourneyList[2].minute))
+                            {
+                                actualScheduleIndex = 1;
+                            }
+                            else
+                            {
+                                actualScheduleIndex = 2;
+                            }
+                        }
+
+                        if (timeNow.DayOfWeek == DayOfWeek.Saturday)
+                        {
+                            if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[1].hour) * 60 +
+                             Int32.Parse(lastJourneyList[1].minute))
+                            {
+                                actualScheduleIndex = 0;
+                            }
+                            else
+                            {
+                                actualScheduleIndex = 1;
+                            }
+                        }
+
+                        if (timeNow.DayOfWeek == DayOfWeek.Monday)
+                        {
+                            if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[0].hour) * 60 +
+                             Int32.Parse(lastJourneyList[0].minute))
+                            {
+                                actualScheduleIndex = 2;
+                            }
+                            else
+                            {
+                                actualScheduleIndex = 0;
+                            }
+                        }
+
+                        // When we know which schedule to use, build the list of arrival times
+                        IList<HourMinuteModel> journeysList = new List<HourMinuteModel>();
+                        results = lastJourneysSearch["timetable"]["routes"][0]["schedules"][actualScheduleIndex]["knownJourneys"].Children().ToList();
+                        foreach (JToken res in results)
+                        {
+                            HourMinuteModel jrn = JsonConvert.DeserializeObject<HourMinuteModel>(res.ToString());
+                            journeysList.Add(jrn);
+                        }
+                        List<string> stopTimesList = new List<string>();
+                        foreach (HourMinuteModel hm in journeysList)
+                        {
+                            TimeSpan span = new TimeSpan(Int32.Parse(hm.hour), Int32.Parse(hm.minute), 0);
+                            if (span.Days > 0)
+                            {
+                                span = span - daySpan;
+                            }
+                            stopTimesList.Add(span.ToString().Substring(0, 5));
+                        }
+
+                        // Create a new LineSchedule object
+                        schedule.Add(new LineScheduleModel(itemId++, stop.name, stopTimesList));
+                    }
+                    else
+                    {
+                        List<string> noresult = new List<string>();
+                        noresult.Add("The schedule for the station is not available at the moment");
+                        schedule.Add(new LineScheduleModel(itemId++, stop.name, noresult));
+                    }
+                }
+            }
+            catch(JsonException je)
             {
-                naptanIds.Add(naptanIdsList.First().naptanIds[i]);
+                return null;
             }
-
-            // for each naptanID fetch its commonName and schedule
-            foreach (string item in naptanIds)
-            {   
-                url = sourceURLHead + "/StopPoint/" + item + sourceURLTail;
-                responseFromServer = await getResponseAsync(url);
-                JToken commonNameSearch = JObject.Parse(responseFromServer);
-                string commonName = (string)commonNameSearch.SelectToken("commonName");
-
-                //Now we build a schedule for the station
-                url = sourceURLHead + "/Line/" + id + "/Timetable/" + item + sourceURLTail;
-                try
-                {
-                    responseFromServer = await getResponseAsync(url);
-                }
-                catch (WebException we)
-                {
-                    responseFromServer = null;
-                }
-
-                if (responseFromServer != null)
-                {
-                    //Here we want to know the time of the last journey for all days [Monday-Friday],[Saturday],[Sunday]
-                    JObject lastJourneysSearch = JObject.Parse(responseFromServer);
-                    IList<HourMinuteModel> lastJourneyList = new List<HourMinuteModel>();
-                    results = lastJourneysSearch["timetable"]["routes"][0]["schedules"].Children()["lastJourney"].ToList();
-                    foreach (JToken res in results)
-                    {
-                        HourMinuteModel lj = JsonConvert.DeserializeObject<HourMinuteModel>(res.ToString());
-                        lastJourneyList.Add(lj);
-                    }
-                    // As soon as we know the time of the last journey, we have to check which schedule to stick to
-                    // E.g. if Saturday/Sunday just started, we should follow Friday/Saturday schedules.                   
-                    int actualScheduleIndex = 0;
-                    if (timeNow.DayOfWeek == DayOfWeek.Sunday)
-                    {
-                        if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[2].hour) * 60 +
-                         Int32.Parse(lastJourneyList[2].minute))
-                        {
-                            actualScheduleIndex = 1;
-                        }
-                        else
-                        {
-                            actualScheduleIndex = 2;
-                        }
-                    }
-
-                    if (timeNow.DayOfWeek == DayOfWeek.Saturday)
-                    {
-                        if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[1].hour) * 60 +
-                         Int32.Parse(lastJourneyList[1].minute))
-                        {
-                            actualScheduleIndex = 0;
-                        }
-                        else
-                        {
-                            actualScheduleIndex = 1;
-                        }
-                    }
-
-                    if (timeNow.DayOfWeek == DayOfWeek.Monday)
-                    {
-                        if (ts.Days * 24 * 60 < Int32.Parse(lastJourneyList[0].hour) * 60 +
-                         Int32.Parse(lastJourneyList[0].minute))
-                        {
-                            actualScheduleIndex = 2;
-                        }
-                        else
-                        {
-                            actualScheduleIndex = 0;
-                        }
-                    }
-
-                    // When we know which schedule to use, build the string
-                    IList<HourMinuteModel> journeysList = new List<HourMinuteModel>();
-                    results = lastJourneysSearch["timetable"]["routes"][0]["schedules"][actualScheduleIndex]["knownJourneys"].Children().ToList();
-                    foreach (JToken res in results)
-                    {
-                        HourMinuteModel jrn = JsonConvert.DeserializeObject<HourMinuteModel>(res.ToString());
-                        journeysList.Add(jrn);
-                    }
-                    string scheduleString = "";
-                    List<string> stopTimesList = new List<string>();
-                    foreach (HourMinuteModel hm in journeysList)
-                    {
-                        TimeSpan span = new TimeSpan(Int32.Parse(hm.hour), Int32.Parse(hm.minute), 0);
-                        if (span.Days > 0) span = span - daySpan;
-                        scheduleString += span.ToString().Substring(0, 5) + " | ";
-                        stopTimesList.Add(span.ToString().Substring(0,5));
-                    }
-
-                    // Create a new LineSchedule object
-                    //schedule.Add(new LineScheduleModel(itemId++,commonName, scheduleString));
-                    schedule.Add(new LineScheduleModel(itemId++, commonName, stopTimesList));
-                }
-                else
-                {
-                    //schedule.Add(new LineScheduleModel(itemId++,commonName,"Schedule for the station is not available at the moment"));
-                    List<string> noresult = new List<string>();
-                    noresult.Add("Schedule for the station is not available at the moment");
-                    schedule.Add(new LineScheduleModel(itemId++,commonName,noresult));
-                }
-            }
-
             return Json(schedule);
         }
 
         public async Task<String> getResponseAsync(string url)
         {
-
             string responseFromServer;
             try
             {
@@ -179,9 +170,7 @@ namespace TestTask.Controllers
             {
                 throw;
             }
-
             return responseFromServer;
         }
-
     }
 }

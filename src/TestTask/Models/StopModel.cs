@@ -5,8 +5,9 @@ using System.Threading.Tasks;
 
 namespace TestTask.Models
 {
-    public class NaptanIdModel
+    public class StopModel
     {
-        public string[] naptanIds { get; set; }
+        public string id { get; set; }
+        public string name { get; set; }
     }
 }
