@@ -163,20 +163,20 @@ namespace TestTask.Controllers
         public async Task<String> getResponseAsync(string url)
         {
             string responseFromServer;
-            try
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            using (HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync())
             {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-                using (HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync())
+                try
                 {
                     var dataStream = response.GetResponseStream();
                     StreamReader reader = new StreamReader(dataStream);
                     responseFromServer = reader.ReadToEnd();
                     return responseFromServer;
                 }
-            }
-            catch (WebException we)
-            {
-                throw;
+                catch (WebException we)
+                {
+                    throw;
+                }
             }
         }
     }
